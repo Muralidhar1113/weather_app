@@ -11,11 +11,10 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       title: 'Weather App',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      home: const WeatherPage(),
       debugShowCheckedModeBanner: false,
+      home: WeatherPage(),
     );
   }
 }
@@ -24,11 +23,11 @@ class WeatherPage extends StatefulWidget {
   const WeatherPage({super.key});
 
   @override
-  _WeatherPageState createState() => _WeatherPageState();
+  WeatherPageState createState() => WeatherPageState();
 }
 
-class _WeatherPageState extends State<WeatherPage> {
-  final List<String> cities = ['Hyderabad', 'Srinagar']; // Multiple cities
+class WeatherPageState extends State<WeatherPage> {
+  final List<String> cities = ['Hyderabad', 'Srinagar'];
   final String apiKey = 'f1e9cb482047d69861791d38a0951d94';
   Map<String, dynamic> weatherData = {};
 
@@ -55,62 +54,216 @@ class _WeatherPageState extends State<WeatherPage> {
         throw Exception('Failed to fetch weather for $city');
       }
     } catch (e) {
-      print(e);
+      debugPrint(e.toString());
       setState(() {
         weatherData[city] = null;
       });
     }
   }
 
+  String getBackground(String main) {
+    switch (main.toLowerCase()) {
+      case 'clear':
+        return 'https://i.ibb.co/2s9BfZ2/sunny.jpg';
+      case 'clouds':
+        return 'https://i.ibb.co/2n5z3kH/cloudy.jpg';
+      case 'rain':
+      case 'drizzle':
+        return 'https://i.ibb.co/QmXgM8D/rainy.jpg';
+      case 'snow':
+        return 'https://i.ibb.co/W6h2j5p/snow.jpg';
+      default:
+        return 'https://i.ibb.co/2s9BfZ2/sunny.jpg';
+    }
+  }
+
+  Color getTextColor(String main) {
+    switch (main.toLowerCase()) {
+      case 'clear':
+        return Colors.black87;
+      default:
+        return Colors.white;
+    }
+  }
+
+  // Get one forecast per day
+  List<dynamic> getDailyForecasts(dynamic data) {
+    Map<String, dynamic> dailyForecasts = {};
+    for (var f in data['list']) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(f['dt'] * 1000);
+      final day = "${dt.year}-${dt.month}-${dt.day}";
+      if (!dailyForecasts.containsKey(day) && dt.isAfter(DateTime.now())) {
+        dailyForecasts[day] = f;
+      }
+    }
+    return dailyForecasts.values.take(3).toList(); // next 3 days
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (weatherData.isEmpty) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final city = cities[0]; // show first city for demo
+    final data = weatherData[city];
+
+    if (data == null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Text('$city: Failed to load weather'),
+          ),
+        ),
+      );
+    }
+
+    final current = data['list'][0];
+    final temp = current['main']['temp'].round();
+    final mainWeather = current['weather'][0]['main'];
+    final description = current['weather'][0]['description'];
+    final icon = current['weather'][0]['icon'];
+    final bg = getBackground(mainWeather);
+    final textColor = getTextColor(mainWeather);
+
+    final forecasts = getDailyForecasts(data);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Weather App'),
-      ),
-      body: weatherData.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              children: cities.map((city) {
-                final data = weatherData[city];
-                if (data == null) {
-                  return ListTile(
-                    title: Text('$city Weather'),
-                    subtitle: const Text('Failed to load data'),
-                  );
-                }
-                // Show today + next 3 days
-                final forecasts = data['list'].take(4).toList();
-                return Card(
-                  margin: const EdgeInsets.all(10),
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$city Weather',
-                          style: const TextStyle(
-                              fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        ...forecasts.map((f) {
-                          final dt = DateTime.fromMillisecondsSinceEpoch(
-                              f['dt'] * 1000);
-                          final temp = f['main']['temp'];
-                          final description = f['weather'][0]['description'];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Text(
-                                '${dt.day}/${dt.month} ${dt.hour}:00 - $temp°C - $description'),
-                          );
-                        }).toList(),
-                      ],
+      body: Stack(
+        children: <Widget>[
+          // Full-screen background image
+          Container(
+            decoration: BoxDecoration(
+              image: DecorationImage(
+                image: NetworkImage(bg),
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+          // Gradient overlay for readability
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.black.withAlpha(150),
+                  Colors.transparent,
+                  Colors.black.withAlpha(150),
+                ],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text(
+                    city,
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
                     ),
                   ),
-                );
-              }).toList(),
+                  const SizedBox(height: 10),
+                  Image.network(
+                    "https://openweathermap.org/img/wn/$icon@2x.png",
+                    width: 80,
+                  ),
+                  Text(
+                    "$temp°C",
+                    style: TextStyle(
+                      fontSize: 56,
+                      fontWeight: FontWeight.bold,
+                      color: textColor,
+                    ),
+                  ),
+                  Text(
+                    description.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 20,
+                      color: textColor.withAlpha(200),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      "Next Days",
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 120,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: forecasts.length,
+                      itemBuilder: (context, index) {
+                        final f = forecasts[index];
+                        final dt = DateTime.fromMillisecondsSinceEpoch(f['dt'] * 1000);
+                        final fTemp = f['main']['temp'].round();
+                        final fIcon = f['weather'][0]['icon'];
+                        final fMain = f['weather'][0]['main'];
+
+                        return Container(
+                          width: 100,
+                          margin: const EdgeInsets.symmetric(horizontal: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withAlpha(100),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dt.weekday % 7],
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Image.network(
+                                "https://openweathermap.org/img/wn/$fIcon.png",
+                                width: 40,
+                              ),
+                              Text(
+                                "$fTemp°C",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                fMain,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ),
+        ],
+      ),
     );
   }
 }
